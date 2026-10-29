@@ -1,0 +1,41 @@
+{
+  "name": "tokenlens",
+  "version": "1.0.0",
+  "private": true,
+  "description": "TokenLens · DeepSeek Harness 的 Windows 浮动用量显示器：上下文 / 连接器 / 子智能体分模块归因、逐轮上下行、每日统计",
+  "main": "src/main/main.js",
+  "keywords": [
+    "deepseek-harness",
+    "dsh",
+    "token-usage",
+    "floating-widget",
+    "windows",
+    "electron"
+  ],
+  "author": "柒仔",
+  "license": "MIT",
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "start": "node scripts/start.js",
+    "demo": "node scripts/start.js --demo",
+    "panel": "node scripts/serve.js --port 4317 --open",
+    "panel:demo": "node scripts/serve.js --port 4317 --demo --open",
+    "icon": "node scripts/make-icon.js",
+    "doctor": "node scripts/doctor.js",
+    "pack": "node scripts/pack.js"
+  },
+  "devDependencies": {
+    "electron": "^43.3.0"
+  },
+  "build": {
+    "appId": "com.tokenlens.app",
+    "productName": "TokenLens",
+    "files": [
+      "src/**/*",
+      "assets/**/*",
+      "package.json"
+    ]
+  }
+}

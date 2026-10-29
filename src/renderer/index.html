@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>TokenLens · Token 用量浮窗</title>
+<link rel="stylesheet" href="styles.css" />
+</head>
+<body data-theme="light">
+<div class="app" id="app">
+
+  <!-- 标题栏（可拖拽） -->
+  <header class="titlebar" id="titlebar">
+    <div class="brand">
+      <span class="brand-dot"></span>
+      <span class="brand-name">TokenLens</span>
+      <span class="brand-tag" id="harnessTag">harness —</span>
+    </div>
+    <div class="win-actions no-drag">
+      <button class="icon-btn" id="btnRefresh" title="立即刷新">⟳</button>
+      <button class="icon-btn" id="btnMore" title="更多">⋯</button>
+      <button class="icon-btn" id="btnCollapse" title="折叠">⌃</button>
+      <button class="icon-btn win-close" id="btnClose" title="退出">✕</button>
+    </div>
+  </header>
+
+  <!-- 更多菜单 -->
+  <div class="menu hidden" id="moreMenu">
+    <div class="menu-row">
+      <span>刷新间隔</span>
+      <div class="seg" id="segRefresh">
+        <button data-ms="2000">2s</button>
+        <button data-ms="5000" class="on">5s</button>
+        <button data-ms="15000">15s</button>
+        <button data-ms="0">暂停</button>
+      </div>
+    </div>
+    <div class="menu-row">
+      <span>数据源</span>
+      <div class="seg" id="segSource">
+        <button data-demo="0" class="on">本机</button>
+        <button data-demo="1">示例</button>
+      </div>
+    </div>
+    <div class="menu-row">
+      <span>窗口</span>
+      <div class="seg" id="segPin">
+        <button data-pin="1" class="on">置顶</button>
+        <button data-pin="0">普通</button>
+      </div>
+    </div>
+    <div class="menu-row menu-meta">
+      <span id="sourceLine">—</span>
+      <button class="link-btn" id="btnOpenHome">打开目录</button>
+    </div>
+  </div>
+
+  <!-- 主体 -->
+  <main class="body" id="body">
+
+    <!-- 今日概览 -->
+    <section class="hero card">
+      <div class="hero-left">
+        <div class="hero-label">今日用量</div>
+        <div class="hero-value" id="todayTotal">—</div>
+        <div class="hero-sub" id="todayDelta">—</div>
+      </div>
+      <div class="hero-right">
+        <div class="mini-stat">
+          <span class="mini-label">缓存命中</span>
+          <span class="mini-value" id="cacheRate">—</span>
+        </div>
+        <div class="mini-stat">
+          <span class="mini-label">近 7 日</span>
+          <span class="mini-value" id="weekTotal">—</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- 模块用量 -->
+    <section class="card">
+      <div class="card-head">
+        <h2>模块用量</h2>
+        <div class="card-tools">
+          <span class="chip" id="moduleTotalChip">—</span>
+        </div>
+      </div>
+      <div class="module-list" id="moduleList"></div>
+      <div class="legend" id="moduleLegend"></div>
+    </section>
+
+    <!-- 上下文水位 -->
+    <section class="card">
+      <div class="card-head">
+        <h2>上下文水位</h2>
+        <span class="chip" id="ctxChip">—</span>
+      </div>
+      <div class="gauge"><div class="gauge-fill" id="gaugeFill"></div><div class="gauge-grid"></div></div>
+      <div class="ctx-split" id="ctxSplit"></div>
+    </section>
+
+    <!-- 任务上下行 -->
+    <section class="card grow">
+      <div class="card-head">
+        <h2>任务上下行</h2>
+        <div class="card-tools">
+          <span class="dot up"></span><span class="dot-label">上行输入</span>
+          <span class="dot down"></span><span class="dot-label">下行输出</span>
+        </div>
+      </div>
+      <div class="turn-scroll" id="turnList"></div>
+    </section>
+
+    <!-- 每日统计 -->
+    <section class="card daily">
+      <div class="card-head">
+        <h2>每日用量</h2>
+        <div class="card-tools">
+          <span class="chip" id="dailyChip">14 天</span>
+        </div>
+      </div>
+      <div class="daily-chart" id="dailyChart"></div>
+      <div class="legend daily-legend">
+        <span><i class="sw sw-input"></i>未缓存输入</span>
+        <span><i class="sw sw-output"></i>输出</span>
+        <span><i class="sw sw-cache"></i>缓存命中</span>
+      </div>
+      <div class="daily-stats" id="dailyStats"></div>
+    </section>
+
+  </main>
+
+  <!-- 紧凑条（折叠后显示） -->
+  <div class="compact hidden" id="compactBar">
+    <span class="compact-dot"></span>
+    <span class="compact-name">TokenLens</span>
+    <span class="compact-value" id="compactValue">—</span>
+    <span class="compact-sub" id="compactSub">今日</span>
+    <button class="icon-btn no-drag" id="btnExpand" title="展开">⌄</button>
+  </div>
+
+  <!-- 会话选择 -->
+  <footer class="footbar">
+    <select id="sessionSelect" class="session-select" title="切换会话"></select>
+    <span class="foot-meta" id="footMeta">—</span>
+  </footer>
+
+  <div class="tooltip hidden" id="tooltip"></div>
+  <div class="empty hidden" id="emptyState">
+    <div class="empty-title">还没有 harness 会话数据</div>
+    <div class="empty-body" id="emptyBody">在 DeepSeek Harness 里跑一个任务，这里会自动出现用量。</div>
+    <button class="ghost-btn no-drag" id="btnDemo">先看示例面板</button>
+  </div>
+</div>
+<script src="app.js"></script>
+</body>
+</html>
