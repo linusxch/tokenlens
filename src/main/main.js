@@ -24,6 +24,7 @@ const argv = process.argv.slice(1);
 const isPanelMode = argv.includes('--panel');
 const isDemoFlag = argv.includes('--demo');
 const isDev = argv.includes('--dev');
+const sourceArg = (argv.find((a) => a.startsWith('--source=')) || '').split('=')[1] || null;
 const shotArg = argv.find((a) => a.startsWith('--shot='));
 const shotPath = shotArg ? shotArg.slice('--shot='.length) : null;
 
@@ -202,10 +203,18 @@ function buildTrayMenu() {
         if (win && !win.isDestroyed()) win.setAlwaysOnTop(item.checked, 'floating');
       },
     },
+    {
+      label: '数据源',
+      submenu: [
+        { label: 'Harness', type: 'radio', checked: (service?.source || 'harness') === 'harness', click: () => switchSource('harness') },
+        { label: 'WorkBuddy', type: 'radio', checked: service?.source === 'workbuddy', click: () => switchSource('workbuddy') },
+        { label: '示例数据', type: 'radio', checked: service?.source === 'demo', click: () => switchSource('demo') },
+      ],
+    },
     { type: 'separator' },
     {
-      label: '打开 harness 数据目录',
-      click: () => shell.openPath(service.home),
+      label: '打开数据目录',
+      click: () => shell.openPath(service.source === 'workbuddy' ? service.wbHome : service.home),
     },
     {
       label: '打开历史库目录',
@@ -250,9 +259,13 @@ function buildTrayMenu() {
 function refreshTray() {
   if (!tray) return;
   tray.setContextMenu(buildTrayMenu());
-  const s = service ? service.snapshot({ demo: isDemoFlag }) : null;
-  const today = s ? s.summary.today.total : 0;
-  tray.setToolTip(`${APP_NAME} · 今日 ${Math.round(today).toLocaleString('zh-CN')} tokens`);
+  let s = null;
+  try {
+    s = service ? service.snapshot({ source: service.source }) : null;
+  } catch (e) { /* 采集失败不影响托盘 */ }
+  const today = s && s.summary && s.summary.today ? s.summary.today.total : 0;
+  const label = service && service.source === 'workbuddy' ? 'WorkBuddy' : '今日';
+  tray.setToolTip(`${APP_NAME} · ${label} ${Math.round(today).toLocaleString('zh-CN')} tokens`);
 }
 
 function createTray() {
@@ -261,6 +274,14 @@ function createTray() {
   tray = new Tray(img.resize({ width: 16, height: 16 }));
   refreshTray();
   tray.on('click', () => toggleWindow());
+}
+
+function switchSource(source) {
+  if (!service) return;
+  service.setSource(source);
+  writeConfig({ source });
+  refreshTray();
+  if (win && !win.isDestroyed()) win.webContents.send('tl:source-changed', source);
 }
 
 function toggleWindow() {
@@ -288,12 +309,21 @@ async function ensurePanel() {
 /* ---------------- IPC ---------------- */
 function registerIpc() {
   ipcMain.handle('tl:snapshot', (_e, opts = {}) => {
-    if (opts.demo != null) service.setDemo(!!opts.demo);
+    const cfg = readConfig();
+    const source = opts.source || cfg.source || 'harness';
+    if (source !== service.source) service.setSource(source);
     try {
-      return service.snapshot({ sessionId: opts.sessionId || readConfig().sessionId });
+      return service.snapshot({ sessionId: opts.sessionId || cfg.sessionId, source });
     } catch (err) {
       return { ok: false, error: String(err && err.message), sessions: [], daily: [] };
     }
+  });
+
+  ipcMain.handle('tl:setSource', (_e, source) => {
+    service.setSource(source);
+    writeConfig({ source });
+    refreshTray();
+    return true;
   });
 
   ipcMain.handle('tl:setDemo', (_e, flag) => {
@@ -325,7 +355,7 @@ function registerIpc() {
     const cfg = readConfig();
     return {
       sessionId: cfg.sessionId || null,
-      demo: cfg.demo != null ? cfg.demo : isDemoFlag,
+      source: cfg.source || (isDemoFlag ? 'demo' : 'harness'),
       refreshMs: typeof cfg.refreshMs === 'number' ? cfg.refreshMs : 5000,
       alwaysOnTop: cfg.alwaysOnTop !== false,
       theme: cfg.theme || 'light',
@@ -348,7 +378,9 @@ if (!gotLock) {
     service = new Service({
       dataDir: app.getPath('userData'),
       demo: isDemoFlag,
+      source: sourceArg || readConfig().source || (isDemoFlag ? 'demo' : 'harness'),
     });
+    if (sourceArg) writeConfig({ source: sourceArg });
 
     registerIpc();
 

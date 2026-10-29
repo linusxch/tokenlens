@@ -31,7 +31,8 @@ function startPanelServer(service, options = {}) {
       try {
         const payload = service.snapshot({
           sessionId: url.searchParams.get('session') || undefined,
-          demo: url.searchParams.get('demo') === '1',
+          source: url.searchParams.get('source')
+            || (url.searchParams.get('demo') === '1' ? 'demo' : undefined),
         });
         const body = JSON.stringify(payload);
         res.writeHead(200, {

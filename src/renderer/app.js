@@ -1,14 +1,16 @@
 /* ------------------------------------------------------------------
    TokenLens 渲染层
-   同一份 UI 同时服务两种宿主：
-     · Electron 浮窗（window.tl 由 preload 注入）
-     · 浏览器 / 面板模式（回落到 /api/snapshot）
+   两种数据源、一套 UI：
+     · Harness   —— 上下文/连接器/子智能体模块归因、逐轮上下行
+     · WorkBuddy —— 按模型聚合、请求画像、会话明细
+   同一份代码同时服务 Electron 浮窗（window.tl 由 preload 注入）
+   与浏览器/面板模式（回落到 /api/snapshot）。
 ------------------------------------------------------------------- */
 
 const state = {
   payload: null,
   sessionId: null,
-  demo: false,
+  source: 'harness', // harness | workbuddy | demo
   refreshMs: 5000,
   timer: null,
   compact: false,
@@ -66,12 +68,10 @@ const MODULE_COLOR = {
 
 /* ---------------- 数据获取 ---------------- */
 async function fetchSnapshot() {
-  if (window.tl && window.tl.snapshot) {
-    return window.tl.snapshot({ sessionId: state.sessionId, demo: state.demo });
-  }
-  const qs = new URLSearchParams();
+  const payloadReq = { source: state.source, sessionId: state.sessionId };
+  if (window.tl && window.tl.snapshot) return window.tl.snapshot(payloadReq);
+  const qs = new URLSearchParams({ source: state.source });
   if (state.sessionId) qs.set('session', state.sessionId);
-  if (state.demo) qs.set('demo', '1');
   const res = await fetch(`/api/snapshot?${qs.toString()}`);
   return res.json();
 }
@@ -88,7 +88,9 @@ async function load() {
   try {
     const payload = await fetchSnapshot();
     state.payload = payload;
-    if (payload.activeId && payload.activeId !== state.sessionId) state.sessionId = payload.activeId;
+    if (payload.mode !== 'workbuddy' && payload.activeId && payload.activeId !== state.sessionId) {
+      state.sessionId = payload.activeId;
+    }
     render(payload);
   } catch (err) {
     el('footMeta').textContent = '读取失败';
@@ -98,30 +100,49 @@ async function load() {
   }
 }
 
-/* ---------------- 渲染 ---------------- */
+/* ---------------- 顶层渲染 ---------------- */
 function render(p) {
-  if (!p || !p.ok) return;
+  if (!p || !p.ok) {
+    if (p && p.mode === 'workbuddy') {
+      el('wbModelList').innerHTML = `<div class="turn-empty">${escapeHtml(p.error || '暂无 WorkBuddy 数据')}</div>`;
+      el('footMeta').textContent = '读取失败';
+    }
+    return;
+  }
+
+  const isWb = p.mode === 'workbuddy';
+  el('hmBody').classList.toggle('hidden', isWb || state.compact);
+  el('wbBody').classList.toggle('hidden', !isWb || state.compact);
+
+  if (isWb) renderWorkbuddy(p);
+  else renderHarness(p);
+
+  const todayTotal = p.summary?.today?.total || 0;
+  el('compactValue').textContent = fmt(todayTotal);
+  el('compactSub').textContent = isWb
+    ? `WorkBuddy 今日 · ${p.summary.requests || 0} 次请求`
+    : `今日 · 缓存命中 ${fmtPct(p.summary?.cacheHitRate, 0)}`;
+
+  el('sourceLine').textContent = p.demo
+    ? '示例数据'
+    : (p.source && p.source.home) || '—';
+}
+
+/* ================= Harness ================= */
+function renderHarness(p) {
   const hasData = p.active && (p.active.turns.length || p.active.moduleTotal > 0);
   el('emptyState').classList.toggle('hidden', !!hasData || !!p.demo);
 
-  // 标题栏
   const hv = p.harness || {};
-  const tag = hv.desktopVersion
-    ? `harness ${hv.desktopVersion}`
-    : 'harness 未检出';
-  el('harnessTag').textContent = tag;
+  el('harnessTag').textContent = hv.desktopVersion ? `harness ${hv.desktopVersion}` : 'harness 未检出';
   el('harnessTag').title = `${hv.home || ''}\nsession 格式 v${hv.sessionFormat || '?'}\nprofile: ${hv.profile || '—'}`;
 
   renderHero(p);
   renderModules(p.active);
   renderContext(p.active);
   renderTurns(p.active);
-  renderDaily(p.daily || []);
+  renderDaily(p.daily || [], { chart: 'dailyChart', chip: 'dailyChip', stats: 'dailyStats' });
   renderFooter(p);
-
-  el('sourceLine').textContent = p.demo ? '示例数据' : (p.source && p.source.home) || '—';
-  el('compactValue').textContent = fmt(p.summary.today.total);
-  el('compactSub').textContent = `今日 · 缓存命中 ${fmtPct(p.summary.cacheHitRate, 0)}`;
 }
 
 function renderHero(p) {
@@ -183,7 +204,7 @@ function renderModules(active) {
 
   const legend = el('moduleLegend');
   const estimated = active.modules.some((m) => m.estimated && m.tokens > 0);
-  legend.innerHTML = `<span>上下文含系统提示与消息正文</span>`
+  legend.innerHTML = '<span>上下文含系统提示与消息正文</span>'
     + `<span>共 ${active.stats.turns} 轮 · ${active.stats.toolCalls} 次工具调用</span>`
     + (estimated ? '<span>※ 连接器/子智能体为归因估算</span>' : '');
 }
@@ -260,8 +281,142 @@ function renderTurns(active) {
   }
 }
 
-function renderDaily(daily) {
-  const box = el('dailyChart');
+/* ================= WorkBuddy ================= */
+function renderWorkbuddy(p) {
+  const s = p.summary || {};
+  const hasData = (p.models && p.models.length) || (p.sessions && p.sessions.length);
+  el('emptyState').classList.toggle('hidden', !!hasData);
+  el('emptyBody').textContent = '在 WorkBuddy 里跑一个任务，这里会出现按模型拆分的用量。';
+
+  el('harnessTag').textContent = `WorkBuddy · ${p.summary.models || 0} 模型`;
+  el('harnessTag').title = `${p.source?.home || ''}\n会话 ${p.source?.sessions || 0} 个 · 请求 ${p.summary.requests || 0} 次`
+    + '\n数据来自 ~/.workbuddy/projects/*/*.jsonl';
+
+  // Hero
+  el('wbToday').textContent = fmt(s.today?.total);
+  el('wbToday').title = `${fmtFull(s.today?.total)} tokens`;
+  const sub = el('wbTodaySub');
+  if (s.deltaPct != null) {
+    const up = s.deltaPct >= 0;
+    sub.innerHTML = `<span class="${up ? 'up' : 'down'}">${up ? '▲' : '▼'} ${fmtPct(Math.abs(s.deltaPct), 0)}</span> 较昨日 · ${s.today.requests || 0} 次请求`;
+  } else {
+    sub.innerHTML = `${s.today?.requests || 0} 次请求 · 输出 ${fmt(s.today?.output)}`;
+  }
+  el('wbCache').textContent = fmtPct(s.cacheHitRate, 0);
+  el('wbWeek').textContent = fmt(s.weekTotal || 0);
+  el('wbWeek').title = `近 7 日合计 ${fmtFull(s.weekTotal)}，日均 ${fmtFull(s.weekAvg)}`;
+
+  // 模型分布
+  const list = el('wbModelList');
+  list.innerHTML = '';
+  const models = p.models || [];
+  const total = models.reduce((a, m) => a + m.total, 0) || 1;
+  el('wbModelChip').textContent = `${models.length} 个模型`;
+
+  if (!models.length) {
+    list.innerHTML = '<div class="turn-empty">暂无模型调用记录</div>';
+  }
+
+  for (const m of models) {
+    const row = document.createElement('div');
+    row.className = 'module-row';
+    row.innerHTML = `
+      <div class="module-name" title="${escapeHtml(m.name)}"><i style="background:${m.color}"></i>${escapeHtml(m.short || m.name)}</div>
+      <div class="module-track"><div class="module-bar" style="background-color:${m.color}"></div></div>
+      <div class="module-val">${fmt(m.total)}<small>${fmtPct(m.share, 0)}</small></div>
+    `;
+    list.appendChild(row);
+    requestAnimationFrame(() => {
+      row.querySelector('.module-bar').style.width = `${Math.max(m.share, m.total ? 1.5 : 0)}%`;
+    });
+    row.addEventListener('mouseenter', (e) => showTip(
+      e,
+      `${m.name}\n`
+      + `合计 ${fmtFull(m.total)}（占比 ${fmtPct(m.share)}）\n`
+      + `未缓存输入 ${fmtFull(m.uncachedInput)} · 缓存命中 ${fmtFull(m.cacheRead)}\n`
+      + `输出 ${fmtFull(m.output)}${m.reasoning ? `（其中推理 ${fmtFull(m.reasoning)}）` : ''}\n`
+      + `请求 ${m.requests} 次 · 平均每次 ${fmtFull(m.avgPerRequest)}\n`
+      + `缓存命中率 ${fmtPct(m.cacheHitRate)}`
+      + (m.aliases && m.aliases.length > 1 ? `\n合并写法：${m.aliases.join(' / ')}` : ''),
+    ));
+    row.addEventListener('mouseleave', hideTip);
+  }
+
+  el('wbModelLegend').innerHTML = models.length
+    ? `<span>按 输入+输出 排序</span><span>共 ${fmtFull(total)} tokens</span><span>${s.requests || 0} 次请求</span>`
+    : '';
+
+  // 请求画像
+  el('wbReqChip').textContent = `${s.requests || 0} 次请求`;
+  const hit = Math.min(s.cacheHitRate || 0, 100);
+  requestAnimationFrame(() => {
+    el('wbGauge').style.width = `${Math.max(hit, 1.2)}%`;
+  });
+  el('wbMetrics').innerHTML = [
+    `<span>缓存命中 <b>${fmtPct(s.cacheHitRate, 1)}</b></span>`,
+    `<span>平均每次 <b>${fmt(s.avgPerRequest)}</b></span>`,
+    `<span>推理输出 <b>${fmt(s.reasoning)}</b></span>`,
+    s.credits ? `<span>平台计量 <b>${s.credits.toFixed(2)}</b></span>` : '',
+  ].filter(Boolean).join('');
+
+  // 会话列表
+  const box = el('wbSessionList');
+  box.innerHTML = '';
+  const sessions = p.sessions || [];
+  el('wbSessionChip').textContent = `${sessions.length} 个会话`;
+  const maxSess = Math.max(...sessions.map((x) => x.totalTokens), 1);
+
+  if (!sessions.length) {
+    box.innerHTML = '<div class="turn-empty">暂无会话</div>';
+  }
+
+  for (const sess of sessions) {
+    const row = document.createElement('div');
+    row.className = 'sess';
+    const model0 = (sess.models && sess.models[0]) || null;
+    const color = model0 ? colorOfModel(p.models, model0.key) : 'var(--text-3)';
+    row.innerHTML = `
+      <div class="sess-main">
+        <div class="sess-title">${escapeHtml(sess.title)}</div>
+        <div class="sess-meta">
+          <i class="sess-dot" style="background:${color}"></i>${escapeHtml(sess.model)}
+          <span>·</span>${sess.requests} 请求
+          <span>·</span>${fmtTime(sess.updatedAt)}
+        </div>
+      </div>
+      <div class="sess-val">${fmt(sess.totalTokens)}</div>
+    `;
+    row.style.setProperty('--w', `${Math.max((sess.totalTokens / maxSess) * 100, sess.totalTokens ? 3 : 0)}%`);
+    box.appendChild(row);
+    requestAnimationFrame(() => row.classList.add('show'));
+    row.addEventListener('mouseenter', (e) => showTip(
+      e,
+      `${sess.title}\n`
+      + `合计 ${fmtFull(sess.totalTokens)} tokens · ${sess.requests} 次请求\n`
+      + `未缓存 ${fmtFull(sess.totals?.uncachedInput)} · 缓存 ${fmtFull(sess.totals?.cacheRead)} · 输出 ${fmtFull(sess.totals?.output)}\n`
+      + (sess.models || []).map((m) => `${m.name}：${m.requests} 次 / ${fmtFull(m.total)}`).join('\n'),
+    ));
+    row.addEventListener('mouseleave', hideTip);
+  }
+
+  renderDaily(p.daily || [], {
+    chart: 'wbDailyChart', chip: 'wbDailyChip', stats: 'wbDailyStats', unit: 'requests',
+  });
+
+  // WorkBuddy 视图为全局聚合，不做单会话切换
+  el('sessionSelect').style.display = 'none';
+  el('footMeta').textContent = `${sessions.length} 会话 · ${s.requests || 0} 请求 · ${models.length} 模型`;
+}
+
+function colorOfModel(models, key) {
+  const hit = (models || []).find((m) => m.key === key);
+  return hit ? hit.color : 'var(--text-3)';
+}
+
+/* ================= 每日图表（两种数据源共用） ================= */
+function renderDaily(daily, ids) {
+  const box = el(ids.chart);
+  if (!box) return;
   box.innerHTML = '';
   if (!daily.length) return;
   const max = Math.max(...daily.map((d) => d.total), 1);
@@ -288,6 +443,7 @@ function renderDaily(daily) {
       seg[1].style.height = `${hInput}%`;
       seg[2].style.height = `${hCache}%`;
     });
+    const req = ids.unit === 'requests' ? d.requests : d.turns;
     wrap.addEventListener('mouseenter', (e) => showTip(
       e,
       `${d.date}${d.isToday ? '（今天）' : ''}\n`
@@ -295,28 +451,33 @@ function renderDaily(daily) {
       + `未缓存输入 ${fmtFull(d.uncachedInput)}\n`
       + `输出 ${fmtFull(d.output)}\n`
       + `缓存命中 ${fmtFull(d.cacheRead)}\n`
-      + `${d.turns} 轮 · ${d.sessions} 个会话`,
+      + `${req || 0} ${ids.unit === 'requests' ? '次请求' : '轮'} · ${d.sessions || 0} 个会话`,
     ));
     wrap.addEventListener('mouseleave', hideTip);
   }
 
-  el('dailyChip').textContent = `${daily.length} 天 · 今日 ${fmt(today.total)}`;
+  const chip = el(ids.chip);
+  if (chip) chip.textContent = `${daily.length} 天 · 今日 ${fmt(today.total)}`;
 
-  // 14 天汇总：合计 / 日均 / 峰值
   const sum = daily.reduce((a, d) => a + d.total, 0);
   const activeDays = daily.filter((d) => d.total > 0).length || 1;
   const peak = daily.reduce((m, d) => (d.total > m.total ? d : m), daily[0]);
-  el('dailyStats').innerHTML = `
-    <div class="ds-item"><span class="ds-label">${daily.length} 天合计</span><span class="ds-value">${fmt(sum)}</span></div>
-    <div class="ds-item"><span class="ds-label">日均（按活跃天）</span><span class="ds-value">${fmt(Math.round(sum / activeDays))}</span></div>
-    <div class="ds-item"><span class="ds-label">峰值</span><span class="ds-value">${fmt(peak.total)}<small>${peak.isToday ? '今天' : peak.label}</small></span></div>
-  `;
+  const stats = el(ids.stats);
+  if (stats) {
+    stats.innerHTML = `
+      <div class="ds-item"><span class="ds-label">${daily.length} 天合计</span><span class="ds-value">${fmt(sum)}</span></div>
+      <div class="ds-item"><span class="ds-label">日均（按活跃天）</span><span class="ds-value">${fmt(Math.round(sum / activeDays))}</span></div>
+      <div class="ds-item"><span class="ds-label">峰值</span><span class="ds-value">${fmt(peak.total)}<small>${peak.isToday ? '今天' : peak.label}</small></span></div>
+    `;
+  }
 }
 
+/* ---------------- 底部栏 ---------------- */
 function renderFooter(p) {
   const sel = el('sessionSelect');
-  const prev = state.sessionId;
+  const prev = sel.value;
   sel.innerHTML = '';
+  sel.style.display = p.sessions.length ? '' : 'none';
   for (const s of p.sessions) {
     const opt = document.createElement('option');
     opt.value = s.id;
@@ -325,7 +486,7 @@ function renderFooter(p) {
     sel.appendChild(opt);
   }
   if (p.activeId) sel.value = p.activeId;
-  sel.style.display = p.sessions.length ? '' : 'none';
+  else if (prev) sel.value = prev;
 
   const active = p.active;
   el('footMeta').textContent = active
@@ -382,22 +543,23 @@ function bindUI() {
     else window.close();
   });
 
+  el('segSource').addEventListener('click', (e) => {
+    const btn = e.target.closest('button');
+    if (!btn) return;
+    setSeg(el('segSource'), btn);
+    state.source = btn.dataset.source;
+    if (window.tl && window.tl.setSource) window.tl.setSource(state.source);
+    load();
+  });
+
   el('segRefresh').addEventListener('click', (e) => {
     const btn = e.target.closest('button');
     if (!btn) return;
     setSeg(el('segRefresh'), btn);
     state.refreshMs = Number(btn.dataset.ms);
+    if (window.tl && window.tl.savePrefs) window.tl.savePrefs({ refreshMs: state.refreshMs });
     schedule();
     if (state.refreshMs) load();
-  });
-
-  el('segSource').addEventListener('click', (e) => {
-    const btn = e.target.closest('button');
-    if (!btn) return;
-    setSeg(el('segSource'), btn);
-    state.demo = btn.dataset.demo === '1';
-    if (window.tl && window.tl.setDemo) window.tl.setDemo(state.demo);
-    load();
   });
 
   el('segPin').addEventListener('click', (e) => {
@@ -421,8 +583,8 @@ function bindUI() {
   });
 
   el('btnDemo').addEventListener('click', () => {
-    state.demo = true;
-    [...el('segSource').children].forEach((b) => b.classList.toggle('on', b.dataset.demo === '1'));
+    state.source = 'demo';
+    [...el('segSource').children].forEach((b) => b.classList.toggle('on', b.dataset.source === 'demo'));
     load();
   });
 
@@ -435,13 +597,23 @@ function bindUI() {
       e.preventDefault();
       load();
     }
+    if (e.key === 'Tab' && (e.ctrlKey || e.metaKey)) {
+      // 快速切换数据源
+      e.preventDefault();
+      const order = ['harness', 'workbuddy', 'demo'];
+      state.source = order[(order.indexOf(state.source) + 1) % order.length];
+      [...el('segSource').children].forEach((b) => b.classList.toggle('on', b.dataset.source === state.source));
+      if (window.tl && window.tl.setSource) window.tl.setSource(state.source);
+      load();
+    }
   });
 }
 
 async function setCompact(flag) {
   state.compact = !!flag;
   document.getElementById('app').classList.toggle('compact-mode', state.compact);
-  el('body').classList.toggle('hidden', state.compact);
+  el('hmBody').classList.toggle('hidden', state.compact || state.source === 'workbuddy');
+  el('wbBody').classList.toggle('hidden', state.compact || state.source !== 'workbuddy');
   el('compactBar').classList.toggle('hidden', !state.compact);
   el('btnCollapse').classList.toggle('hidden', state.compact);
   if (window.tl && window.tl.setCompact) window.tl.setCompact(state.compact);
@@ -456,25 +628,34 @@ async function boot() {
       const prefs = await window.tl.getPrefs();
       if (prefs) {
         if (prefs.sessionId) state.sessionId = prefs.sessionId;
-        if (typeof prefs.demo === 'boolean') state.demo = prefs.demo;
+        if (prefs.source) state.source = prefs.source;
         if (typeof prefs.refreshMs === 'number') state.refreshMs = prefs.refreshMs;
         if (typeof prefs.alwaysOnTop === 'boolean') state.alwaysOnTop = prefs.alwaysOnTop;
         if (prefs.theme) document.body.dataset.theme = prefs.theme;
       }
     } catch (e) { /* 首次启动 */ }
 
-    // 同步分段控件状态
+    [...el('segSource').children].forEach((b) => {
+      b.classList.toggle('on', b.dataset.source === state.source);
+    });
     [...el('segRefresh').children].forEach((b) => {
       b.classList.toggle('on', Number(b.dataset.ms) === state.refreshMs);
-    });
-    [...el('segSource').children].forEach((b) => {
-      b.classList.toggle('on', (b.dataset.demo === '1') === state.demo);
     });
     [...el('segPin').children].forEach((b) => {
       b.classList.toggle('on', (b.dataset.pin === '1') === state.alwaysOnTop);
     });
+
+    if (window.tl.onSourceChanged) {
+      window.tl.onSourceChanged((source) => {
+        if (!source || source === state.source) return;
+        state.source = source;
+        [...el('segSource').children].forEach((b) => {
+          b.classList.toggle('on', b.dataset.source === source);
+        });
+        load();
+      });
+    }
   } else {
-    // 面板模式：跟随系统亮暗
     if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) {
       document.body.dataset.theme = 'dark';
     }

@@ -51,27 +51,34 @@ function todayKey(now = new Date()) {
 }
 
 /**
+ * 只合并每日序列（按字段取大值，避免重复采集翻倍）。
+ * WorkBuddy 有精确的按日归属，只需要这一层，不需要「首见归创建日」的外推。
+ */
+function mergeDaily(db, daily) {
+  for (const day of daily || []) {
+    const cur = db.days[day.date] || { uncachedInput: 0, output: 0, cacheRead: 0, cacheWrite: 0, turns: 0 };
+    const total = (day.uncachedInput || 0) + (day.output || 0) + (day.cacheRead || 0);
+    db.days[day.date] = {
+      uncachedInput: Math.max(cur.uncachedInput || 0, day.uncachedInput || 0),
+      output: Math.max(cur.output || 0, day.output || 0),
+      cacheRead: Math.max(cur.cacheRead || 0, day.cacheRead || 0),
+      cacheWrite: Math.max(cur.cacheWrite || 0, day.cacheWrite || 0),
+      turns: Math.max(cur.turns || 0, day.turns || day.requests || 0),
+      sessions: Math.max(cur.sessions || 0, day.sessions || 0),
+      total: Math.max(cur.total || 0, total),
+    };
+  }
+  return db;
+}
+
+/**
  * 合并一次采集快照到历史库。
  * @param {object} db
  * @param {object} snapshot collector.collect() 的返回值
  * @returns {object} db
  */
 function merge(db, snapshot) {
-  for (const day of snapshot.daily || []) {
-    const cur = db.days[day.date] || { uncachedInput: 0, output: 0, cacheRead: 0, cacheWrite: 0, turns: 0 };
-    db.days[day.date] = {
-      uncachedInput: Math.max(cur.uncachedInput || 0, day.uncachedInput || 0),
-      output: Math.max(cur.output || 0, day.output || 0),
-      cacheRead: Math.max(cur.cacheRead || 0, day.cacheRead || 0),
-      cacheWrite: Math.max(cur.cacheWrite || 0, day.cacheWrite || 0),
-      turns: Math.max(cur.turns || 0, day.turns || 0),
-      sessions: Math.max(cur.sessions || 0, day.sessions || 0),
-      total: Math.max(
-        cur.total || 0,
-        (day.uncachedInput || 0) + (day.output || 0) + (day.cacheRead || 0),
-      ),
-    };
-  }
+  mergeDaily(db, snapshot.daily);
 
   for (const s of snapshot.sessions || []) {
     const prev = db.sessions[s.id];
@@ -144,4 +151,4 @@ function series(db, liveDaily, days = 14, now = new Date()) {
   return out;
 }
 
-module.exports = { load, save, merge, series, todayKey, emptyDb };
+module.exports = { load, save, merge, mergeDaily, series, todayKey, emptyDb };

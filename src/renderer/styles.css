@@ -322,8 +322,8 @@ body[data-theme="dark"] .hero-value {
   scrollbar-width: thin;
 }
 .turn-scroll::-webkit-scrollbar { width: 7px; }
-.turn-scroll::-webkit-scrollbar-thumb { background: var(--line); border-radius: 4px; }
-.turn-scroll::-webkit-scrollbar-thumb:hover { background: var(--text-3); }
+.turn-scroll::-webkit-scrollbar-thumb { background: rgba(91, 100, 121, .22); border-radius: 4px; }
+.turn-scroll::-webkit-scrollbar-thumb:hover { background: rgba(91, 100, 121, .42); }
 
 .turn {
   display: grid; grid-template-columns: 34px 1fr;
@@ -374,7 +374,7 @@ body[data-theme="dark"] .hero-value {
   position: relative;
   flex: 1 1 auto;
   min-height: 84px;
-  max-height: 156px;
+  max-height: 132px;
   height: auto;
   display: flex;
   align-items: flex-end;
@@ -407,12 +407,10 @@ body[data-theme="dark"] .hero-value {
   white-space: nowrap;
   transform: scale(.94);
 }
-.day.today .day-label { color: var(--accent); font-weight: 700; }
-.day.today::before {
-  content: ""; position: absolute; inset: -3px -1px 8px; z-index: -1;
-  border-radius: 5px;
-  background: linear-gradient(180deg, rgba(76, 111, 255, .07), rgba(76, 111, 255, .015));
-  border: 0;
+.day.today .day-label {
+  color: var(--accent); font-weight: 700;
+  border-bottom: 2px solid rgba(76, 111, 255, .5);
+  padding-bottom: 1px;
 }
 .day { z-index: 0; }
 .day.dim .day-label { color: var(--text-3); opacity: .55; }
@@ -520,3 +518,44 @@ body[data-theme="dark"] .hero-value {
 .ghost-btn:hover { background: rgba(76, 111, 255, .16); }
 
 .hidden { display: none !important; }
+
+/* ---------------- WorkBuddy：模型名列更宽 ---------------- */
+#wbModelList .module-row { grid-template-columns: 92px 1fr 58px; }
+#wbModelList .module-name { font-size: 10.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* ---------------- WorkBuddy：会话行 ---------------- */
+.sess {
+  position: relative;
+  display: flex; align-items: center; gap: 8px;
+  padding: 5px 6px;
+  border-radius: 6px;
+}
+.sess:hover { background: var(--bg-soft); }
+.sess::before {
+  content: "";
+  position: absolute; left: 0; top: 0; bottom: 0;
+  width: var(--w, 0%);
+  border-radius: 6px;
+  background: linear-gradient(90deg, rgba(76, 111, 255, .10), rgba(76, 111, 255, .02));
+  opacity: 0;
+  transition: opacity .45s ease;
+  pointer-events: none;
+}
+.sess.show::before { opacity: 1; }
+.sess-main { flex: 1 1 auto; min-width: 0; position: relative; }
+.sess-title {
+  font-size: 11px; font-weight: 600;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.sess-meta {
+  display: flex; align-items: center; gap: 4px;
+  font-size: 9.5px; color: var(--text-3); margin-top: 1px;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.sess-dot { width: 6px; height: 6px; border-radius: 50%; display: inline-block; flex: 0 0 auto; }
+.sess-val {
+  position: relative;
+  font-size: 11px; font-weight: 650;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}

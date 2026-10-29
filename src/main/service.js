@@ -8,10 +8,26 @@
 const os = require('os');
 const path = require('path');
 const collector = require('./collector');
+const workbuddy = require('./workbuddy');
 const history = require('./history');
 const { buildDemoSnapshot } = require('./demo');
 
 const DAYS = 14;
+
+/**
+ * 模型短名：面板列宽有限，把 "DeepSeek-V4.1-Flash" 收敛成 "V4.1-Flash"。
+ * 只在名字过长时处理，完整名字仍保留在 tooltip 里。
+ */
+function shortModelName(name) {
+  const s = String(name || '').trim();
+  if (s.length <= 12) return s;
+  const parts = s.split(/[-_\s]+/).filter(Boolean);
+  if (parts.length >= 3) return parts.slice(1).join('-');
+  return `${s.slice(0, 11)}…`;
+}
+
+/** 模型 / 模块配色（模型数超过 4 个时循环取用） */
+const PALETTE = ['#4c6fff', '#12b886', '#f59e0b', '#8b5cf6', '#ec4899', '#06b6d4', '#f97316', '#64748b'];
 
 function pct(part, whole) {
   if (!whole) return 0;
@@ -41,18 +57,29 @@ function cleanTitle(title, cwd, id) {
 
 class Service {
   /**
-   * @param {{home?:string, dataDir:string, demo?:boolean}} options
+   * @param {{home?:string, wbHome?:string, dataDir:string, demo?:boolean, source?:string}} options
    */
   constructor(options) {
     this.home = options.home || process.env.DSH_HOME || path.join(os.homedir(), '.dsh');
+    this.wbHome = options.wbHome || process.env.WORKBUDDY_HOME || path.join(os.homedir(), '.workbuddy');
     this.dataDir = options.dataDir || path.join(os.homedir(), '.tokenlens');
     this.historyFile = path.join(this.dataDir, 'history.json');
+    this.wbHistoryFile = path.join(this.dataDir, 'history-workbuddy.json');
     this.demo = !!options.demo;
+    this.source = options.source || 'harness';
     this.db = history.load(this.historyFile);
+    this.wbDb = history.load(this.wbHistoryFile);
   }
 
   setDemo(flag) {
     this.demo = !!flag;
+    if (flag) this.source = 'harness';
+  }
+
+  setSource(source) {
+    if (!source) return;
+    this.source = source;
+    this.demo = source === 'demo';
   }
 
   setHome(home) {
@@ -62,9 +89,16 @@ class Service {
 
   /** 采集 + 落历史 + 组装视图模型 */
   snapshot(prefs = {}) {
-    const raw = this.demo ? buildDemoSnapshot() : collector.collect({ home: this.home });
+    const source = prefs.source || this.source || 'harness';
+    if (source === 'workbuddy') return this.workbuddySnapshot(prefs);
+    const demo = source === 'demo' || this.demo;
+    return this.harnessSnapshot(prefs, demo);
+  }
 
-    if (!this.demo) {
+  harnessSnapshot(prefs = {}, demo = false) {
+    const raw = demo ? buildDemoSnapshot() : collector.collect({ home: this.home });
+
+    if (!demo) {
       history.merge(this.db, raw);
       history.save(this.historyFile, this.db);
     }
@@ -95,8 +129,9 @@ class Service {
 
     const payload = {
       ok: true,
+      mode: 'harness',
       generatedAt: Date.now(),
-      demo: !!this.demo,
+      demo,
       harness: raw.harness,
       source: raw.source,
       warnings: raw.warnings || [],
@@ -129,6 +164,96 @@ class Service {
       },
     };
     return payload;
+  }
+
+  /**
+   * WorkBuddy 用量视图：聚合所有会话，按模型拆分。
+   * 与 harness 的差别：没有「模块/上下文水位」，多了「模型分布」和「请求画像」。
+   */
+  workbuddySnapshot(prefs = {}) {
+    let raw;
+    try {
+      raw = workbuddy.collect({ home: this.wbHome });
+    } catch (err) {
+      return {
+        ok: false,
+        mode: 'workbuddy',
+        error: String(err && err.message),
+        source: { home: this.wbHome, exists: false },
+        warnings: [String(err && err.message)],
+        sessions: [],
+        models: [],
+        daily: [],
+        summary: { today: { total: 0 }, yesterday: { total: 0 }, deltaPct: null, weekTotal: 0, weekAvg: 0, cacheHitRate: 0, sessions: 0 },
+      };
+    }
+
+    // WorkBuddy 的按日归属是精确的，只做每日合并，不做「首见归创建日」外推
+    history.mergeDaily(this.wbDb, raw.daily);
+    history.save(this.wbHistoryFile, this.wbDb);
+
+    const daily = history.series(this.wbDb, raw.daily, DAYS)
+      .map((d) => ({ ...d, requests: d.turns }));
+
+    const today = daily[daily.length - 1] || {
+      total: 0, uncachedInput: 0, output: 0, cacheRead: 0, requests: 0,
+    };
+    const yesterday = daily[daily.length - 2] || { total: 0 };
+    const week = daily.slice(-7);
+    const weekTotal = week.reduce((a, d) => a + d.total, 0);
+    const activeDays = week.filter((d) => d.total > 0).length || 1;
+
+    const totals = raw.totals || {};
+    const models = (raw.models || []).map((m, i) => ({
+      ...m,
+      short: shortModelName(m.name),
+      color: PALETTE[i % PALETTE.length],
+      avgPerRequest: m.requests ? Math.round(m.total / m.requests) : 0,
+      cacheHitRate: pct(m.cacheRead, m.cacheRead + m.uncachedInput),
+    }));
+
+    const sessions = (raw.sessions || []).map((s) => ({
+      id: s.id,
+      title: s.title,
+      cwd: s.cwd,
+      model: s.model,
+      models: s.models,
+      createdAt: s.createdAt,
+      updatedAt: s.updatedAt,
+      totals: s.totals,
+      totalTokens: (s.totals?.uncachedInput || 0) + (s.totals?.cacheRead || 0) + (s.totals?.output || 0),
+      requests: s.requests,
+      reasoning: s.reasoning,
+      credit: s.credit,
+    }));
+
+    return {
+      ok: true,
+      mode: 'workbuddy',
+      generatedAt: Date.now(),
+      demo: false,
+      source: raw.source,
+      warnings: raw.warnings || [],
+      sessions,
+      models,
+      daily,
+      totals,
+      summary: {
+        today,
+        yesterday,
+        deltaPct: yesterday.total ? pct(today.total - yesterday.total, yesterday.total) : null,
+        weekTotal,
+        weekAvg: Math.round(weekTotal / activeDays),
+        cacheHitRate: pct(totals.cacheRead || 0, (totals.cacheRead || 0) + (totals.uncachedInput || 0)),
+        sessions: sessions.length,
+        requests: totals.requests || 0,
+        models: models.length,
+        credits: totals.credit || 0,
+        reasoning: totals.reasoning || 0,
+        avgPerRequest: totals.requests ? Math.round(totals.total / totals.requests) : 0,
+        spanDays: daily.filter((d) => d.total > 0).length,
+      },
+    };
   }
 
   /** 单个会话的展示模型：模块占比、逐轮上下行、上下文水位 */

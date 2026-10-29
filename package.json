@@ -1,8 +1,8 @@
 {
   "name": "tokenlens",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "private": true,
-  "description": "TokenLens · DeepSeek Harness 的 Windows 浮动用量显示器：上下文 / 连接器 / 子智能体分模块归因、逐轮上下行、每日统计",
+  "description": "TokenLens · DeepSeek Harness 与 WorkBuddy 的 Windows 浮动用量显示器：模块归因、模型分布、逐轮上下行、每日统计",
   "main": "src/main/main.js",
   "keywords": [
     "deepseek-harness",

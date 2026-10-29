@@ -8,6 +8,7 @@ const { contextBridge, ipcRenderer } = require('electron');
 
 contextBridge.exposeInMainWorld('tl', {
   snapshot: (opts) => ipcRenderer.invoke('tl:snapshot', opts || {}),
+  setSource: (source) => ipcRenderer.invoke('tl:setSource', source),
   setDemo: (flag) => ipcRenderer.invoke('tl:setDemo', !!flag),
   setAlwaysOnTop: (flag) => ipcRenderer.invoke('tl:setAlwaysOnTop', !!flag),
   setCompact: (flag) => ipcRenderer.invoke('tl:setCompact', !!flag),
@@ -15,4 +16,7 @@ contextBridge.exposeInMainWorld('tl', {
   openPath: (p) => ipcRenderer.invoke('tl:openPath', p),
   getPrefs: () => ipcRenderer.invoke('tl:getPrefs'),
   savePrefs: (prefs) => ipcRenderer.invoke('tl:savePrefs', prefs || {}),
+  onSourceChanged: (cb) => {
+    ipcRenderer.on('tl:source-changed', (_e, source) => cb(source));
+  },
 });

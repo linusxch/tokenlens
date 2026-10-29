@@ -22,14 +22,15 @@ const getArg = (name, fallback) => {
 const port = Number(getArg('port', 4317));
 const home = getArg('home', undefined);
 const demo = args.includes('--demo');
+const source = getArg('source', demo ? 'demo' : 'harness');
 
-const service = new Service({ home, demo });
+const service = new Service({ home, source });
 
 startPanelServer(service, { port }).then((res) => {
   const snap = service.snapshot({});
   console.log(`[TokenLens] 面板模式已启动`);
   console.log(`  地址   ${res.url}`);
-  console.log(`  数据源 ${snap.source.home}${snap.demo ? '（示例）' : ''}`);
+  console.log(`  数据源 ${snap.source.home}（${snap.mode}${snap.demo ? ' · 示例' : ''}）`);
   console.log(`  会话   ${snap.sessions.length} 个 · 今日 ${snap.summary.today.total} tokens`);
   if (args.includes('--open')) {
     const { exec } = require('child_process');

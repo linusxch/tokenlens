@@ -15,7 +15,7 @@
     <div class="brand">
       <span class="brand-dot"></span>
       <span class="brand-name">TokenLens</span>
-      <span class="brand-tag" id="harnessTag">harness —</span>
+      <span class="brand-tag" id="harnessTag">—</span>
     </div>
     <div class="win-actions no-drag">
       <button class="icon-btn" id="btnRefresh" title="立即刷新">⟳</button>
@@ -28,19 +28,20 @@
   <!-- 更多菜单 -->
   <div class="menu hidden" id="moreMenu">
     <div class="menu-row">
+      <span>数据源</span>
+      <div class="seg" id="segSource">
+        <button data-source="harness" class="on">Harness</button>
+        <button data-source="workbuddy">WorkBuddy</button>
+        <button data-source="demo">示例</button>
+      </div>
+    </div>
+    <div class="menu-row">
       <span>刷新间隔</span>
       <div class="seg" id="segRefresh">
         <button data-ms="2000">2s</button>
         <button data-ms="5000" class="on">5s</button>
         <button data-ms="15000">15s</button>
         <button data-ms="0">暂停</button>
-      </div>
-    </div>
-    <div class="menu-row">
-      <span>数据源</span>
-      <div class="seg" id="segSource">
-        <button data-demo="0" class="on">本机</button>
-        <button data-demo="1">示例</button>
       </div>
     </div>
     <div class="menu-row">
@@ -56,10 +57,9 @@
     </div>
   </div>
 
-  <!-- 主体 -->
-  <main class="body" id="body">
+  <!-- ================= Harness 视图 ================= -->
+  <main class="body" id="hmBody">
 
-    <!-- 今日概览 -->
     <section class="hero card">
       <div class="hero-left">
         <div class="hero-label">今日用量</div>
@@ -78,19 +78,15 @@
       </div>
     </section>
 
-    <!-- 模块用量 -->
     <section class="card">
       <div class="card-head">
         <h2>模块用量</h2>
-        <div class="card-tools">
-          <span class="chip" id="moduleTotalChip">—</span>
-        </div>
+        <div class="card-tools"><span class="chip" id="moduleTotalChip">—</span></div>
       </div>
       <div class="module-list" id="moduleList"></div>
       <div class="legend" id="moduleLegend"></div>
     </section>
 
-    <!-- 上下文水位 -->
     <section class="card">
       <div class="card-head">
         <h2>上下文水位</h2>
@@ -100,7 +96,6 @@
       <div class="ctx-split" id="ctxSplit"></div>
     </section>
 
-    <!-- 任务上下行 -->
     <section class="card grow">
       <div class="card-head">
         <h2>任务上下行</h2>
@@ -112,13 +107,10 @@
       <div class="turn-scroll" id="turnList"></div>
     </section>
 
-    <!-- 每日统计 -->
     <section class="card daily">
       <div class="card-head">
         <h2>每日用量</h2>
-        <div class="card-tools">
-          <span class="chip" id="dailyChip">14 天</span>
-        </div>
+        <div class="card-tools"><span class="chip" id="dailyChip">14 天</span></div>
       </div>
       <div class="daily-chart" id="dailyChart"></div>
       <div class="legend daily-legend">
@@ -127,6 +119,69 @@
         <span><i class="sw sw-cache"></i>缓存命中</span>
       </div>
       <div class="daily-stats" id="dailyStats"></div>
+    </section>
+
+  </main>
+
+  <!-- ================= WorkBuddy 视图 ================= -->
+  <main class="body hidden" id="wbBody">
+
+    <section class="hero card">
+      <div class="hero-left">
+        <div class="hero-label">WorkBuddy 今日用量</div>
+        <div class="hero-value" id="wbToday">—</div>
+        <div class="hero-sub" id="wbTodaySub">—</div>
+      </div>
+      <div class="hero-right">
+        <div class="mini-stat">
+          <span class="mini-label">缓存命中</span>
+          <span class="mini-value" id="wbCache">—</span>
+        </div>
+        <div class="mini-stat">
+          <span class="mini-label">近 7 日</span>
+          <span class="mini-value" id="wbWeek">—</span>
+        </div>
+      </div>
+    </section>
+
+    <section class="card">
+      <div class="card-head">
+        <h2>模型用量</h2>
+        <div class="card-tools"><span class="chip" id="wbModelChip">—</span></div>
+      </div>
+      <div class="module-list" id="wbModelList"></div>
+      <div class="legend" id="wbModelLegend"></div>
+    </section>
+
+    <section class="card">
+      <div class="card-head">
+        <h2>请求画像</h2>
+        <span class="chip" id="wbReqChip">—</span>
+      </div>
+      <div class="gauge"><div class="gauge-fill" id="wbGauge"></div><div class="gauge-grid"></div></div>
+      <div class="ctx-split" id="wbMetrics"></div>
+    </section>
+
+    <section class="card grow">
+      <div class="card-head">
+        <h2>会话</h2>
+        <div class="card-tools"><span class="chip" id="wbSessionChip">—</span></div>
+      </div>
+      <div class="turn-scroll" id="wbSessionList"></div>
+    </section>
+
+    <section class="card daily">
+      <div class="card-head">
+        <h2>每日用量</h2>
+        <div class="card-tools"><span class="chip" id="wbDailyChip">14 天</span></div>
+      </div>
+      <div class="daily-chart" id="wbDailyChart"></div>
+      <div class="legend daily-legend">
+        <span><i class="sw sw-input"></i>未缓存输入</span>
+        <span><i class="sw sw-output"></i>输出</span>
+        <span><i class="sw sw-cache"></i>缓存命中</span>
+      </div>
+      <div class="daily-stats" id="wbDailyStats"></div>
     </section>
 
   </main>
@@ -148,8 +203,8 @@
 
   <div class="tooltip hidden" id="tooltip"></div>
   <div class="empty hidden" id="emptyState">
-    <div class="empty-title">还没有 harness 会话数据</div>
-    <div class="empty-body" id="emptyBody">在 DeepSeek Harness 里跑一个任务，这里会自动出现用量。</div>
+    <div class="empty-title">还没有会话数据</div>
+    <div class="empty-body" id="emptyBody">在 Harness 或 WorkBuddy 里跑一个任务，这里会自动出现用量。</div>
     <button class="ghost-btn no-drag" id="btnDemo">先看示例面板</button>
   </div>
 </div>

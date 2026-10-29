@@ -1,5 +1,66 @@
 # Release Notes
 
+## v1.1.0 — 2026-10-29
+
+新增 **WorkBuddy 数据源**：同一个浮窗里现在能看两套账 —— Harness 的模块归因，和 WorkBuddy 的**按模型**消耗。
+
+![WorkBuddy 视图](docs/preview-workbuddy.png)
+
+### 新增
+
+**WorkBuddy 视图（按模型看用量）**
+
+- 数据来源：`~/.workbuddy/projects/<project>/<session-id>.jsonl`，取每条记录的 `providerData.usage` / `rawUsage`。
+- **模型用量**：按模型汇总 token 与占比，附带请求次数、平均每次开销、缓存命中率；tooltip 里给出未缓存输入 / 缓存命中 / 输出 / 推理输出的完整拆分。
+- **请求画像**：整体缓存命中率条 + 平均每次 / 推理输出 / 平台计量（credit）。
+- **会话明细**：每个会话的总量、主导模型、请求数、最后活跃时间，按用量排布背景条。
+- **每日统计**：与 Harness 共用的 14 天堆叠柱。
+- 模型名归并：`Deepseek-V4.1-Flash` 与 `DeepSeek-V4.1-Flash` 合并为一个模型，展示名取出现最多的写法，tooltip 里列出全部别名。
+
+**数据源切换（四种入口）**
+
+- 菜单 `⋯` → 数据源 → Harness / WorkBuddy / 示例
+- 快捷键 `Ctrl + Tab` 循环切换
+- 托盘右键 → 数据源（带 radio 勾选，切换后浮窗即时跟随）
+- 启动参数 `--source=harness|workbuddy|demo`
+
+选择持久化到 `%APPDATA%\tokenlens\config.json`，下次启动直接进入；面板模式支持 `?source=workbuddy`。
+
+**口径与工程细节**
+
+- WorkBuddy 的 `usage.inputTokens` 与 `rawUsage.prompt_tokens` **已包含缓存命中部分**；未缓存输入取 `prompt_cache_miss_tokens`，缺失时用 `input − hit` 兜底。
+- 同一条消息可能同时出现在 `function_call` 与 `message` 记录里，按 `providerData.messageId` 去重（实测 710 条 usage 记录零重复）。
+- 两个数据源各自维护每日历史库（`history.json` / `history-workbuddy.json`），互不污染。
+- WorkBuddy 侧有精确的按日归属，因此**不做** Harness 那套「首见归总到创建日」的外推，避免多天会话把某一天抬高。
+- 解析结果按 `(mtime, size)` 缓存：11 MB / 18 个会话首次 147ms，命中缓存后 8ms。
+- `scripts/doctor.js` 增加 WorkBuddy 段（会话数、请求数、总量、模型列表、无用量会话提示）。
+
+### 本机实测（首次跑通时的快照）
+
+| 指标 | 数值 |
+| --- | --- |
+| 会话 | 14 个有用量 / 共 18 个 jsonl |
+| 请求 | 714 次 |
+| 总 tokens | 80,443,766（未缓存 2,468,659 / 缓存 77,486,720 / 输出 488,387） |
+| 缓存命中率 | 96.9% |
+| 模型 | DeepSeek-V4.1-Flash(475) · Hy4 preview(221) · qwen3.5_9b(17) · 快速(1) |
+
+### 兼容性
+
+| 项目 | 说明 |
+| --- | --- |
+| WorkBuddy jsonl | 含 `providerData.usage`；缺字段的记录自动跳过，不报错 |
+| Harness | 仍为 0.2.1-rc.2 / session format v4，读取逻辑未改动 |
+| Node | WorkBuddy 侧不依赖 zstd，Node 18 也能跑；Harness 明细仍需 ≥ 22.15 |
+
+### 已知限制
+
+- WorkBuddy 不暴露上下文窗口，因此该视图没有「上下文水位」，也没有模块归因。
+- 4 个会话在本地没有用量记录（纯对话），不计入统计，仅在 `doctor` 里提示。
+- `credit`（平台计量）只展示原始数值，不做金额或单价换算。
+
+---
+
 ## v1.0.0 — 2026-10-29
 
 首个可发布版本。目标很朴素：把 DeepSeek Harness 已经算好的 token 账，变成一个**贴桌面、看得懂、不打扰**的浮窗。

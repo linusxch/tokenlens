@@ -9,6 +9,7 @@ const os = require('os');
 const path = require('path');
 const zlib = require('zlib');
 const collector = require('../src/main/collector');
+const workbuddy = require('../src/main/workbuddy');
 
 const line = (k, v) => console.log(`  ${String(k).padEnd(16)} ${v}`);
 
@@ -54,6 +55,16 @@ if (!snap.sessions.length) {
 console.log('\n每日用量：');
 if (!snap.daily.length) console.log('  （无）');
 snap.daily.forEach((d) => console.log(`  ${d.date}  ${String(d.total).padStart(9)}  (${d.turns} 轮)`));
+
+// ---------------- WorkBuddy ----------------
+console.log('\nWorkBuddy 用量\n' + '-'.repeat(46));
+const wb = workbuddy.collect({});
+line('会话目录', wb.source.home);
+line('会话', `${wb.source.withUsage} 个有用量 / 共 ${wb.source.sessions} 个`);
+line('请求次数', wb.totals.requests);
+line('总 tokens', `${wb.totals.total.toLocaleString('zh-CN')}（未缓存 ${wb.totals.uncachedInput.toLocaleString('zh-CN')} / 缓存 ${wb.totals.cacheRead.toLocaleString('zh-CN')} / 输出 ${wb.totals.output.toLocaleString('zh-CN')}）`);
+line('模型', wb.models.length ? wb.models.map((m) => `${m.name}(${m.requests})`).join(' · ') : '（无）');
+if (wb.warnings.length) wb.warnings.forEach((w) => console.log(`  ! ${w}`));
 
 console.log('\n结论：' + (snap.source.exists && snap.sessions.length
   ? '数据链路正常，可以启动浮窗（npm start）。'
