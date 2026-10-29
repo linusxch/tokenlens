@@ -1,5 +1,38 @@
 # Release Notes
 
+## v1.1.1 — 2026-10-29
+
+打包出**可直接双击运行的 Windows 免安装版**。前面两个版本都要求机器上有 Node / Electron，这一版把运行时一起带上。
+
+### 新增
+
+**Windows 免安装包（portable）**
+
+- 产物：`TokenLens-1.1.1-win64-portable.zip`（128.8 MB），解压后双击 `TokenLens.exe` 即可，
+  不依赖 Node、npm、harness，也不用联网。
+- 新增 `scripts/build-win.js`，做法是复用本机已有的 Electron 运行时拼出应用目录：
+  - 拷运行时骨架 → 应用文件放进 `resources/app` → 主程序改名 `TokenLens.exe`
+  - 裁掉 53 个多余语言包（只留 `en-US` / `zh-CN`）：348 MB → 302 MB
+  - 用 `resedit`（纯 JS，无需原生二进制）改写 PE 资源：图标（16–256 七档 ICO）+ 版本信息
+    （ProductName `TokenLens` / FileVersion `1.1.1` / CompanyName `柒仔` / OriginalFilename `TokenLens.exe`）
+  - 自写 ZIP 写入器（deflate + CRC32），主程序压缩率 44%（215 MB → 94 MB）
+- `scripts/make-icon.js` 现在额外产出多尺寸 `assets/icon.ico`（内嵌 PNG，Vista+ 规范）。
+- 新增 npm 脚本：`npm run build:win`。
+- 未做代码签名，首次启动可能被 SmartScreen 拦一次（更多信息 → 仍要运行）。
+
+### 校验
+
+- SHA256 `4948a91e1b24563aa9e357df1ff49916e5e2ec284f57dc48df08116f70629d5d`
+- 解压后 41 个文件、302 MB；`TokenLens.exe` 215 MB
+
+### 验证
+
+- 直接运行 `dist/TokenLens-win64/TokenLens.exe` → 两套视图正常渲染
+- 把 zip 解压到独立目录再运行 → 同样正常（验证不依赖项目目录）
+- `unzip` 后 CRC32 全量校验通过（41 个文件）
+
+---
+
 ## v1.1.0 — 2026-10-29
 
 新增 **WorkBuddy 数据源**：同一个浮窗里现在能看两套账 —— Harness 的模块归因，和 WorkBuddy 的**按模型**消耗。

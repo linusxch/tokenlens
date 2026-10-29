@@ -1,6 +1,6 @@
 {
   "name": "tokenlens",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "private": true,
   "description": "TokenLens · DeepSeek Harness 与 WorkBuddy 的 Windows 浮动用量显示器：模块归因、模型分布、逐轮上下行、每日统计",
   "main": "src/main/main.js",
@@ -24,10 +24,12 @@
     "panel:demo": "node scripts/serve.js --port 4317 --demo --open",
     "icon": "node scripts/make-icon.js",
     "doctor": "node scripts/doctor.js",
-    "pack": "node scripts/pack.js"
+    "pack": "node scripts/pack.js",
+    "build:win": "node scripts/build-win.js --zip"
   },
   "devDependencies": {
-    "electron": "^43.3.0"
+    "electron": "^43.3.0",
+    "resedit": "^3.1.0"
   },
   "build": {
     "appId": "com.tokenlens.app",

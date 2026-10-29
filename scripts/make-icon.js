@@ -149,9 +149,39 @@ function drawIcon(size) {
   return encodePng(size, size, out);
 }
 
+/**
+ * 打包 Windows EXE 用的多尺寸 ICO。
+ * Vista 起允许在 ICO 里直接内嵌 PNG，因此这里逐尺寸生成 PNG 再拼目录项。
+ */
+function buildIco(sizes) {
+  const images = sizes.map((s) => ({ size: s, png: drawIcon(s) }));
+  const header = Buffer.alloc(6);
+  header.writeUInt16LE(0, 0);
+  header.writeUInt16LE(1, 2); // type: icon
+  header.writeUInt16LE(images.length, 4);
+
+  const entries = [];
+  let offset = 6 + images.length * 16;
+  for (const img of images) {
+    const e = Buffer.alloc(16);
+    e[0] = img.size >= 256 ? 0 : img.size; // 0 表示 256
+    e[1] = img.size >= 256 ? 0 : img.size;
+    e[2] = 0; // 调色板数
+    e[3] = 0;
+    e.writeUInt16LE(1, 4);   // color planes
+    e.writeUInt16LE(32, 6);  // bits per pixel
+    e.writeUInt32LE(img.png.length, 8);
+    e.writeUInt32LE(offset, 12);
+    entries.push(e);
+    offset += img.png.length;
+  }
+  return Buffer.concat([header, ...entries, ...images.map((i) => i.png)]);
+}
+
 const dir = path.join(__dirname, '..', 'assets');
 fs.mkdirSync(dir, { recursive: true });
 fs.writeFileSync(path.join(dir, 'icon.png'), drawIcon(256));
 fs.writeFileSync(path.join(dir, 'tray.png'), drawIcon(32));
 fs.writeFileSync(path.join(dir, 'icon@16.png'), drawIcon(16));
+fs.writeFileSync(path.join(dir, 'icon.ico'), buildIco([16, 24, 32, 48, 64, 128, 256]));
 console.log('icons written to', dir);

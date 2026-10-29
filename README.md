@@ -27,6 +27,11 @@
 - **会话明细**：每个会话的总量、主导模型、请求数、最后活跃时间
 - **每日统计**：同一套 14 天图表
 
+**两种拿法**：
+
+- **直接运行（推荐给非开发者）**：下载 `TokenLens-1.1.1-win64-portable.zip`（约 129 MB），解压后双击 `TokenLens.exe`，不用装 Node、不用装 Electron、不用联网。
+- **从源码跑（推荐给要改的人）**：`git clone` 后 `npm start`，见下文「快速开始」。
+
 三种打开形态：
 
 | 形态 | 命令 | 说明 |
@@ -34,6 +39,34 @@
 | 浮窗 | `npm start` | 无边框、置顶、可拖拽缩放的独立窗口 |
 | 紧凑条 | 点标题栏 `⌃` | 收成一条 48px 横条，托盘/快捷键随时展开 |
 | 面板 | `npm run panel` | 起一个本地 HTTP 面板，可嵌进 harness web profile 或任意 iframe |
+
+## Windows 可执行版
+
+打包产物是**免安装绿色版**：整个目录自带 Electron 运行时，拷到任何 Windows 10/11 x64 机器上双击即可。
+
+```
+TokenLens-win64/
+  TokenLens.exe          ← 双击这个
+  *.dll / *.pak / *.dat   ← Chromium 与 Electron 运行时（别删）
+  locales/               ← 只保留中英文语言包
+  resources/app/         ← 应用本体（源码 + 配置），想改行为可直接改这里
+  icon.png
+```
+
+- 体积：解压后约 302 MB，zip 约 129 MB（主程序 215 MB 压到 94 MB）。
+- 未做代码签名，首次启动可能被 SmartScreen 拦一次：点「更多信息 → 仍要运行」。
+- 快捷方式：右键 `TokenLens.exe` → 发送到 → 桌面快捷方式；配合托盘菜单的「开机自启」可常驻。
+- 打包脚本会改写 PE 资源（图标 + 版本信息 = `TokenLens` / `1.1.1` / `柒仔`）。
+
+自己打包：
+
+```bash
+npm run icon          # 生成 icon.png / icon.ico（多尺寸）
+npm run build:win     # 产出 dist/TokenLens-win64/ 与 dist/TokenLens-1.1.1-win64-portable.zip
+```
+
+`build-win.js` 默认复用 **harness 自带的 Electron**（`~/.dsh/electron`），离线可用；
+也可以用 `--electron=<目录>` 指向任意 Electron 运行时。
 
 ## 快速开始
 
@@ -164,8 +197,9 @@ scripts/
   start.js           运行时探测 + 启动
   serve.js           无 Electron 的面板模式（--source 可选）
   doctor.js          环境自检（两个数据源）
-  make-icon.js       图标生成（纯 Node 写 PNG）
-  pack.js            打包 zip（纯 Node 写 ZIP）
+  make-icon.js       图标生成（纯 Node 写 PNG / ICO）
+  pack.js            源码 zip（纯 Node 写 ZIP）
+  build-win.js       Windows 免安装包：复用 Electron 运行时 + resedit 改 PE 资源 + 打 zip
 ```
 
 常用命令：
