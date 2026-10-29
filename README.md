@@ -3,6 +3,9 @@
 > 给 DeepSeek Harness 装一只贴在桌面上的「用量仪表」：上下文、连接器、子智能体各占多少，
 > 每一轮任务上下行花了多少，最近 14 天怎么走的，一眼看完。纯本地、零上传。
 
+[![release](https://img.shields.io/github/v/release/linusxch/tokenlens?label=release)](https://github.com/linusxch/tokenlens/releases)
+[![license](https://img.shields.io/github/license/linusxch/tokenlens)](LICENSE)
+
 ![预览](docs/preview-light.png)
 
 ## 它解决什么问题
